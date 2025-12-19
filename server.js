@@ -58,17 +58,23 @@ app.post('/generate-quiz', verifyFirebaseToken, async (req, res) => {
   const { content } = req.body;
   if (!content) return res.status(400).json({ error: 'Content required' });
 
-  const prompt = `Generate 5 quiz questions. Structure exactly as:
+  const prompt = `Generate exactly 5 quiz questions based **only** on the given topic. Do not use any related or external topics. Structure each question exactly like this:
+
   ''<Question>''
   --<option1>--
   --<option2>--
   --<option3>--
   --<option4>--
   --<correct option among 4>--
-  Make sure total questions are 5 no less no more
-  <====Question Starts==
-  ${content}
-  ==Question Ends====>`;
+
+Make sure:
+- There are exactly 5 questions.
+- Follow the format strictly.
+- All questions come only from the content below.
+
+<====Question Starts====
+${content}
+====Question Ends====>`;
 
   try {
     const apiKey = getApiKey();
