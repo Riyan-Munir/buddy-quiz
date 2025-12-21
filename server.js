@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 const { GoogleGenAI } = require('@google/genai');
 const admin = require('firebase-admin');
 
@@ -18,17 +17,8 @@ const modelName = 'gemini-2.5-flash';
 const geminiKeys = [
   process.env.GEMINI_API_KEY_1,
   process.env.GEMINI_API_KEY_2,
-  process.env.GEMINI_API_KEY_3,
-  process.env.GEMINI_API_KEY_4,
-  process.env.GEMINI_API_KEY_5
+  process.env.GEMINI_API_KEY_3, // keep only first 3 keys
 ];
-
-let apiCallCount = 0;
-function getApiKey() {
-  const index = Math.floor(apiCallCount / 1000);
-  apiCallCount++;
-  return geminiKeys[index % geminiKeys.length];
-}
 
 // Initialize Firebase Admin SDK
 const serviceAccount = JSON.parse(
@@ -45,12 +35,28 @@ async function verifyFirebaseToken(req, res, next) {
 
   try {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
-    req.user = decodedToken; // contains uid, email, etc.
+    req.user = decodedToken;
     next();
   } catch (err) {
     console.error('Firebase token verification error:', err.message);
     res.status(401).json({ error: 'Unauthorized' });
   }
+}
+
+// Function to try sending request with retries
+async function generateQuizWithRetries(prompt) {
+  for (let i = 0; i < geminiKeys.length; i++) {
+    const apiKey = geminiKeys[i];
+    const ai = new GoogleGenAI({ apiKey });
+    try {
+      const result = await ai.models.generateContent({ model: modelName, contents: prompt });
+      return result.text;
+    } catch (err) {
+      console.error(`API key ${i + 1} failed:`, err.message);
+      // continue to next key
+    }
+  }
+  throw new Error('All API keys failed to generate quiz');
 }
 
 // Quiz route
@@ -77,13 +83,11 @@ ${content}
 ====Question Ends====>`;
 
   try {
-    const apiKey = getApiKey();
-    const ai = new GoogleGenAI({ apiKey });
-    const result = await ai.models.generateContent({ model: modelName, contents: prompt });
-    res.json({ response: result.text });
+    const responseText = await generateQuizWithRetries(prompt);
+    res.json({ response: responseText });
   } catch (err) {
-    console.error('Quiz generation error:', err);
-    res.status(500).json({ error: 'Failed to generate quiz' });
+    console.error('Quiz generation failed with all keys:', err.message);
+    res.status(500).json({ error: 'Failed to generate quiz with all API keys' });
   }
 });
 
